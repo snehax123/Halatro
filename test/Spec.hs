@@ -23,13 +23,16 @@ tests and property tests (respectively) are written.
 -}
 
 import Control.Arrow
+import Control.Monad
 import CourseworkOne
 import Data.Bifunctor (bimap)
 import Data.Bool
 import Data.Function
-import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.List qualified as List
+import Data.Map qualified as Map
+import Data.Ratio
+import Data.Set qualified as Set
+import Halatro.BasicGame
 import Halatro.Constants
 import Halatro.Types
 import System.Console.ANSI
@@ -40,10 +43,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Muffled (muffledMain)
 import Test.Tasty.QuickCheck hiding (Discard)
-import Halatro.BasicGame
-import Control.Monad
 import Text.Printf
-import Data.Ratio
 
 main :: IO ()
 main = do
@@ -169,8 +169,12 @@ testPartTwo =
               ]
             longestCardName = maximum $ map (length . printShortHand . snd) testCases
             pad s = s <> replicate (longestCardName - length s) ' '
-         in map (\(ht, hand) -> testCase (pad (printShortHand hand) <> " ==> " <> show ht) 
-          $ bestHandType hand @?= ht) testCases
+         in map
+              ( \(ht, hand) ->
+                  testCase (pad (printShortHand hand) <> " ==> " <> show ht) $
+                    bestHandType hand @?= ht
+              )
+              testCases
     ]
 
 testPartThree :: TestTree
@@ -184,44 +188,60 @@ testPartThree =
               (vector 5 `suchThat` (\h -> bestHandType h `elem` [RoyalFlush, StraightFlush, FullHouse, Flush, Straight]))
               printShortHand
             $ \x -> whichCardsScore x `eqSet` x,
-          scoringProp 
+          scoringProp
             "For 4-card hand types, four cards should be scored"
             [FourOfAKind, TwoPair]
             4,
-          scoringProp 
+          scoringProp
             "For 3-of-a-kind, three cards should be scored"
-            [ThreeOfAKind] 
+            [ThreeOfAKind]
             3,
-          scoringProp "For pair, two cards should be scored"
+          scoringProp
+            "For pair, two cards should be scored"
             [Pair]
             2,
-          scoringProp "For high card, only one card is scored"
+          scoringProp
+            "For high card, only one card is scored"
             [HighCard]
-            1
-          , 
-          testCase "For an empty hand, no cards are scored"
-            $ whichCardsScore [] @=? []
+            1,
+          testCase "For an empty hand, no cards are scored" $
+            whichCardsScore [] @=? []
         ],
-      testGroup "Ex. 4: scoreHand" [
-        testCase ("Works on the example in the spec") 
-          $ scoreHand [A @ S, A @ H, A @ C, 3 @ C, 2 @ H] @?= 189,
-        testProperty "Works on 1000 random hands" 
-          $ withMaxSuccess 1000 $ \hand ->
-            scoreHand hand `shouldScore` sw hand
-      ]
+      testGroup
+        "Ex. 4: scoreHand"
+        [ testCase ("Works on the example in the spec") $
+            scoreHand [A @ S, A @ H, A @ C, 3 @ C, 2 @ H] @?= 189,
+          testProperty "Works on 1000 random hands" $
+            withMaxSuccess 1000 $ do
+              n <- chooseInt (1, 5)
+              hand <- vector n
+              pure $ scoreHand hand `shouldScore` sw hand
+        ]
     ]
-    where
-      scoringProp str types n = 
-        testProperty 
-          str $
-          forAllShow
+  where
+    scoringProp str types n =
+      testProperty
+        str
+        $ forAllShow
           (vector 5 `suchThat` (\h -> bestHandType h `elem` types && List.nub h == h))
           printShortHand
           (\x -> x `scoreNCards` n)
 
+sameRanks :: [Rank] -> [Rank] -> Property
+x `sameRanks` y =
+  counterexample
+    (concat ["Should give: ", show y, " (in some order) \nBut got:     ", show x])
+    res
+  where
+    res = List.sort x == List.sort y
+    interpret True = " == "
+    interpret False = " /= "
+
 eqSet :: Hand -> Hand -> Property
-x `eqSet` y = counterexample 
-  (concat ["Should give: ", printShortHand y, "\nBut got:     ", printShortHand x]) res
+x `eqSet` y =
+  counterexample
+    (concat ["Should give: ", printShortHand y, "\nBut got:     ", printShortHand x])
+    res
   where
     res = List.sort x == List.sort y
     interpret True = " == "
@@ -230,73 +250,84 @@ x `eqSet` y = counterexample
 x `shouldScore` y = counterexample ("Should score: " ++ show y ++ "\nBut got:      " ++ show x) (x == y)
 
 scoreNCards :: Hand -> Int -> Property
-scoreNCards hand n = 
+scoreNCards hand n =
   let w = whichCardsScore hand
-  in counterexample 
-    ("Tried to score " ++ show (length w) ++ " cards: " ++ printShortHand w) 
-    (length w == n)
-
+   in counterexample
+        ("Tried to score " ++ show (length w) ++ " cards: " ++ printShortHand w)
+        (length w == n)
 
 testPartFour :: TestTree
-testPartFour = testGroup "Part Four" [
-  testGroup "Ex. 5: highestScoringHand" [
-    testProperty 
-      -- ("Example 1 (" ++ printShortHand [2 @ H, 3 @ H, 4 @ H, 5 @ H, 6 @ H, 7 @ H, 8 @ H, 9 @ H] ++ ")")
-      "Example 1"
-      $ highestScoringHand [2 @ H, 3 @ H, 4 @ H, 5 @ H, 6 @ H, 7 @ H, 8 @ H, 9 @ H] `eqSet` [5 @ H, 6 @ H, 7 @ H, 8 @ H, 9 @ H],
-    testProperty
-      "Example 2"
-      -- ("Example 2 (" ++ printShortHand [2 @ H, 3 @ C, 5 @ H, 7 @ C, 8 @ D, 9 @ S, J @ C, Q @ D] ++ ")")
-      $ counterexample " We should score the Queen, as it is the highest card and there is no better option" 
-      $ Q @ D `elem` highestScoringHand [2 @ H, 3 @ C, 5 @ H, 7 @ C, 8 @ D, 9 @ S, J @ C, Q @ D],
-    testProperty
-      "Always selects between one and five cards"
-      $ forAll (listOf1 arbitrary `suchThat` (\h -> length h <= 8))
-      $ \hand -> let h = highestScoringHand hand in 
-        length h >= 1 && length h <= 5,
-
-    testProperty
-      "A hand with fewer cards never has a better score"
-      $ forAll (do 
-        x <- listOf1 arbitrary `suchThat` (\h -> length h <= 8)
-        x' <- sublistOf x
-        pure (x,x'))
-      $ \(h,h') -> counterexample
-          ("The highest scoring hand for " ++ printShortHand h ++ " was" ++ show (highestScoringHand h) ++ " but with the subset" ++ printShortHand h' ++ " it was " ++ show (highestScoringHand h'))
-          (scoreHand (highestScoringHand h) >= scoreHand (highestScoringHand h')),
-    testCase
-      "Chooses an empty selection when the hand is empty"
-      $ highestScoringHand [] @=? []
+testPartFour =
+  testGroup
+    "Part Four"
+    [ testGroup
+        "Ex. 5: highestScoringHand"
+        [ testProperty
+            -- ("Example 1 (" ++ printShortHand [2 @ H, 3 @ H, 4 @ H, 5 @ H, 6 @ H, 7 @ H, 8 @ H, 9 @ H] ++ ")")
+            "Example 1"
+            $ highestScoringHand [2 @ H, 3 @ H, 4 @ H, 5 @ H, 6 @ H, 7 @ H, 8 @ H, 9 @ H] `eqSet` [5 @ H, 6 @ H, 7 @ H, 8 @ H, 9 @ H],
+          testProperty
+            "Example 2"
+            -- ("Example 2 (" ++ printShortHand [2 @ H, 3 @ C, 5 @ H, 7 @ C, 8 @ D, 9 @ S, J @ C, Q @ D] ++ ")")
+            $ counterexample " We should score the Queen, as it is the highest card and there is no better option"
+            $ Q @ D `elem` highestScoringHand [2 @ H, 3 @ C, 5 @ H, 7 @ C, 8 @ D, 9 @ S, J @ C, Q @ D],
+          testProperty
+            "Always selects between one and five cards"
+            $ forAll (listOf1 arbitrary `suchThat` (\h -> length h <= 8))
+            $ \hand ->
+              let h = highestScoringHand hand
+               in length h >= 1 && length h <= 5,
+          testProperty
+            "A hand with fewer cards never has a better score"
+            $ forAll
+              ( do
+                  x <- listOf1 arbitrary `suchThat` (\h -> length h <= 8)
+                  x' <- sublistOf x
+                  pure (x, x')
+              )
+            $ \(h, h') ->
+              counterexample
+                ("The highest scoring hand for " ++ printShortHand h ++ " was" ++ show (highestScoringHand h) ++ " but with the subset" ++ printShortHand h' ++ " it was " ++ show (highestScoringHand h'))
+                (scoreHand (highestScoringHand h) >= scoreHand (highestScoringHand h')),
+          testCase
+            "Chooses an empty selection when the hand is empty"
+            $ highestScoringHand [] @=? []
+        ]
     ]
-  
-  ]
 
 testPartFive :: TestTree
-testPartFive = testGroup "Part Five" [
-  testGroup "Ex. 6: simpleAI" [
-    testProperty "Always plays the five highest cards" 
-      $ forAll gamePosition
-      $ \(m,c) -> let Move m' c' = simpleAI m c in
-          c' `eqSet` take 5 (List.sortBy (\a b -> if a > b then LT else GT) c)
-    ],
-  testGroup "Ex. 7: sensibleAI" [
-    testProperty "Always plays the best hand (but doesn't discard)"
-      $ forAll gamePosition
-      $ \(m,c) -> let Move m' c' = sensibleAI m c in
-          (scoreHand c') `shouldScore` scoreHand (highestScoringHand c)
-  ],
-  testGroup "Ex. 8: myAI" [
-    testCaseSteps "Plays Halatro"
-      $ \step -> do
-        let numTries = 100
-        avg <- getAverageDirect numTries
-        let avgStr = printf "%.2f" (fromRational avg :: Double)
-        step $ "\nAverage score over " ++ show numTries ++ " games: " ++ avgStr
-  ]
-  ]
+testPartFive =
+  testGroup
+    "Part Five"
+    [ testGroup
+        "Ex. 6: simpleAI"
+        [ testProperty "Always plays the five highest cards" $
+            forAll gamePosition $
+              \(m, c) ->
+                let Move m' c' = simpleAI m c
+                 in map rank c' `sameRanks` map rank (take 5 (List.sortBy (\a b -> if a > b then LT else GT) c))
+        ],
+      testGroup
+        "Ex. 7: sensibleAI"
+        [ testProperty "Always plays the best hand (but doesn't discard)" $
+            forAll gamePosition $
+              \(m, c) ->
+                let Move m' c' = sensibleAI m c
+                 in scoreHand c' `shouldScore` scoreHand (highestScoringHand c)
+        ],
+      testGroup
+        "Ex. 8: myAI"
+        [ testCaseSteps "Plays Halatro" $
+            \step -> do
+              let numTries = 100
+              avg <- getAverageDirect numTries
+              let avgStr = printf "%.2f" (fromRational avg :: Double)
+              step $ "\nAverage score over " ++ show numTries ++ " games: " ++ avgStr
+        ]
+    ]
 
 move :: Gen Move
-move = Move <$> elements [Play, Discard] <*> vector 5
+move = Move <$> elements [Play, Discard] <*> (vector =<< chooseInt (1, 5))
 
 gamePosition :: Gen ([Move], [Card])
 gamePosition = (,) <$> listOf1 move <*> vectorOf 8 arbitrary
@@ -305,7 +336,6 @@ getAverageDirect :: Int -> IO Rational
 getAverageDirect n = do
   results <- replicateM n runAIDirectly
   pure $ fromIntegral (sum results) % fromIntegral n
-
 
 --------------------------------------------------------------------------------
 -- Helpers for computing scores of hands
