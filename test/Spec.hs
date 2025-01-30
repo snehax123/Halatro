@@ -313,8 +313,8 @@ testPartFive =
             forAll gamePosition $
               \(m, c) ->
                 let Move m' c' = sensibleAI m c
-                 in scoreHand c' `shouldScore` scoreHand (highestScoringHand c)
-        ],
+                 in scoreHand c' `shouldScore` scoreHand (highestScoringHand c)        
+                 ],
       testGroup
         "Ex. 8: myAI"
         [ testCaseSteps "Plays Halatro" $

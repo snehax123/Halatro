@@ -470,9 +470,22 @@ makeAIMove = do
     Just (Move ty sel) -> case sel List.\\ scs of
       [] -> do
         case ty of
-          Play -> doPlayHand
-          Discard -> doDiscardHand
+          Play -> do
+            hr <- gets (handsRemaining . gameState)
+            if hr <= 0
+              then do
+                writeError "Cannot play hand with 0 hands remaining. Giving up."
+                modify $ \ts -> ts {aiMove = Nothing, currentMode = GameOver}
+              else doPlayHand
+          Discard -> do
+            dr <- gets (discardsRemaining . gameState)
+            if dr <= 0
+              then do
+                writeError "Cannot discard hand with 0 discards remaining. Giving up."
+                modify $ \ts -> ts {aiMove = Nothing, currentMode = GameOver}
+              else doDiscardHand
         modify $ \ts -> ts {aiMove = Nothing}
+        modifyGameState $ \g -> g {pastMoves = pastMoves g ++ [Move ty sel]}
       (c : _) -> do
         modify $ \ts ->
           ts
