@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+
 -- |
 --     This module contains the code for running Halatro.
 --     You do NOT need to worry about the contents of this file, but it
@@ -17,6 +19,8 @@ import System.Random (randomRIO)
 -- | All the cards in a deck.
 initialDeck :: [Card]
 initialDeck = Card <$> [minBound .. maxBound] <*> [minBound .. maxBound]
+
+-- initialDeck = [Card Two Hearts, Card Three Hearts, Card Four Hearts, Card Five Hearts, Card Six Hearts, Card Seven Hearts, Card Eight Hearts, Card Nine Hearts]
 
 -- |
 --   Perform a Fisher-Yates shuffle on the deck
@@ -106,7 +110,10 @@ applyMove m@(Move pord cards) gs@GameState {..} = do
             handsRemaining = hr,
             discardsRemaining = dr
           }
-  draw newGS
+  if
+    | hr < 0 -> error "Tried to play a hand with 0 remaining hands"
+    | dr < 0 -> error "Tried to discard with 0 remaining discards"
+    | otherwise -> draw newGS
 
 draw :: GameState -> IO GameState
 draw gs@GameState {..} = do
