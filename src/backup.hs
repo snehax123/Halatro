@@ -23,7 +23,6 @@ contains hand ThreeOfAKind = sameRank 3 hand -- A pair is classified if we have 
 -- Straight checks if the sorted hand is equal to the ordered 5 numbers where the first number is the lowest number in the hand or its a special case
 contains hand Straight = (sortedHand hand == take 5 [head (sortedHand hand) ..] || sortedHand hand == [Two, Three, Four, Five, Ace]) 
         && length hand == 5 -- A straight is classified by checking for consecutive values (including low-ace straight)
-        -- it makes sure we have exactly 5 cards so it doesn't return true for card ranks like [A] or [Q,K,A] or [J,Q,K,A]
 contains hand Flush = or [length (filter (== x) [s | Card _ s <- hand]) == 5 | x <- [s | Card _ s <- hand]]  -- All suits must be the same
 -- extracts the suit and checks if it is the same suit and appears exactly 5 times
 contains hand FullHouse = sameRank 2 hand && sameRank 3 hand -- A FullHouse is classified if we have threeOfAkind and a pair
@@ -91,7 +90,7 @@ scoreHand hand = (sum [rankScore r | Card r _ <- cardScored] + fst(handTypeValue
 highestScoringHand :: [Card] -> Hand
 highestScoringHand cards 
         | length cards <= 5 = cards -- if there is less than 5 cards, it returns all the cards
-        | otherwise = maximumBy (comparing scoreHand) $ filter (\hand -> length hand == 5) (subsequences cards)
+        | otherwise = maximumBy (comparing scoreHand) . filter ((== 5) . length) $ subsequences cards
         -- if there is more than 5 cards, it checks against all the subsequences of 5 cards and calculates its score and returns the hand with the maximum score
 
 --------------------------------------------------------------------------------
@@ -100,28 +99,28 @@ highestScoringHand cards
 -- Function to play the highest 5 cards
 simpleAI :: [Move] -> [Card] -> Move
 -- sorts the cards from lowest to highest from card ranks then reverses it and plays the first five cards
-simpleAI _ cards = Move Play $ take 5 $ reverse $ sort cards 
+simpleAI _ cards = Move Play (take 5 $ reverse $ sort cards )
 
 -- Function to always play the best hand type
 sensibleAI :: [Move] -> [Card] -> Move
 -- calls the highestScoringHand function which returns the best hand and then plays it
-sensibleAI _ cards = Move Play $ highestScoringHand cards
+sensibleAI _ cards = Move Play (highestScoringHand cards)
 
 -- Function that chooses the best move whether to play or discard based on the hand score
 myAI :: [Move] -> [Card] -> Move
 myAI moves cards
-    | scoreHand (highestScoringHand cards) > 190 = Move Play $ highestScoringHand cards
+    | scoreHand (highestScoringHand cards) > 190 = Move Play (highestScoringHand cards)
     | otherwise = backupMove moves cards -- calls the backupMove function to decide what move to play if score is less than 190
 
 -- Function to decide which cards to play or discard
 backupMove :: [Move] -> [Card] -> Move
 backupMove moves cards
     -- if there is a possibility of a flush (4 cards of the same suit), it discards the 4 other cards trying to get that suit if discard option is available
-    | length possibleFlush == 4 && length cards > 4 && countDiscards moves < 3 = Move Discard $ filter (`notElem` possibleFlush) cards
+    | length possibleFlush == 4 && length cards > 4 && countDiscards moves < 3 = Move Discard (filter (`notElem` possibleFlush) cards)
     -- if discard option is not available, it would play the best hand type
-    | countDiscards moves >= 3 = Move Play $ highestScoringHand cards
+    | countDiscards moves >= 3 = Move Play (highestScoringHand cards)
     -- if discard option is available, it would discard the lowest 4 hands that don't contribute to the best hand type
-    | otherwise = Move Discard $ take 4 sortedCards
+    | otherwise = Move Discard (take 4 sortedCards)
   where
     remaining = filter (`notElem` whichCardsScore (highestScoringHand cards)) cards -- store the cards which are not used in the best hand type
     sortedCards = sortOn rank remaining -- sorts the cards which are not used in the best hand type
